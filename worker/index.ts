@@ -6,6 +6,7 @@ import { Buffer } from "node:buffer";
 import { createHmac, createPrivateKey, sign, timingSafeEqual } from "node:crypto";
 import { boundedText, secretMatches, verifyCallbackSignature } from "./protocol-security";
 import { protocolStore, type StoreEnv } from "./protocol-store";
+import { signSubscriptionRequest, decryptRegistryChallenge, registryEncryptionKeys } from "./registration";
 
 interface Env extends StoreEnv {
   ASSETS: Fetcher;
@@ -20,6 +21,8 @@ interface Env extends StoreEnv {
   ONDC_DEPLOYMENT_MODE?: string;
   ONDC_CALLBACK_VERIFICATION?: string;
   ONDC_TRUSTED_SIGNING_KEYS?: string;
+  ONDC_SUBSCRIPTION_REQUEST_ID?: string;
+  ONDC_REGISTRY_ENVIRONMENT?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -287,6 +290,30 @@ const worker = {
           vary: "Origin",
         },
       });
+    }
+
+    // Registry onboarding routes do not enable customer or Workbench transactions.
+    if (url.pathname === "/ondc-site-verification.html") {
+      if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
+      if (!env.ONDC_SUBSCRIPTION_REQUEST_ID || !env.ONDC_SIGNING_PRIVATE_KEY) return json({ error: "subscription_not_configured" }, 503);
+      try {
+        const signature = signSubscriptionRequest(env.ONDC_SUBSCRIPTION_REQUEST_ID, env.ONDC_SIGNING_PRIVATE_KEY);
+        return new Response(request.method === "HEAD" ? null : `<!doctype html><html><head><meta name="ondc-site-verification" content="${signature}"></head><body>ONDC Site Verification</body></html>`, {
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" },
+        });
+      } catch { return json({ error: "subscription_configuration_invalid" }, 503); }
+    }
+    if (url.pathname === "/buyer/on_subscribe") {
+      if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      if (!(request.headers.get("content-type") ?? "").includes("application/json")) return json({ error: "json_required" }, 415);
+      const environment = env.ONDC_REGISTRY_ENVIRONMENT ?? "preproduction";
+      if (!env.ONDC_ENCRYPTION_PRIVATE_KEY || !env.ONDC_SUBSCRIBER_ID || !Object.hasOwn(registryEncryptionKeys, environment)) return json({ error: "subscription_not_configured" }, 503);
+      try {
+        const body = JSON.parse(await boundedText(request, 16384)) as { subscriber_id?: unknown; challenge?: unknown };
+        if (body?.subscriber_id !== env.ONDC_SUBSCRIBER_ID || typeof body.challenge !== "string") return json({ error: "invalid_subscription_challenge" }, 400);
+        const answer = decryptRegistryChallenge(body.challenge, env.ONDC_ENCRYPTION_PRIVATE_KEY, registryEncryptionKeys[environment as keyof typeof registryEncryptionKeys]);
+        return json({ answer });
+      } catch { return json({ error: "invalid_subscription_challenge" }, 400); }
     }
 
     if (url.pathname === "/_vinext/image") {

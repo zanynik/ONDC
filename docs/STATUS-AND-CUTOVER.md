@@ -89,3 +89,10 @@ Customer support tickets currently save in Supabase and appear in the customer's
 account; there is no email notification or operator dashboard yet. Use Supabase
 Studio as the restricted operator view during development. Do not promise an
 operational support SLA on the basis of a successful ticket insertion alone.
+
+## Portal status checked after this implementation
+
+ONDC emailed on 20 October that the buyer profile was disabled for inactivity;
+it can be re-enabled under Integrations. The agreement ticket was closed on
+15 October. See [the current production checklist](ONDC-PRODUCTION-NEXT-STEPS.md)
+for key recovery, exact email settings, DNS and the portal approval sequence.
