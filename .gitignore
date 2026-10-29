@@ -40,3 +40,9 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+/.dev.vars*
+/worker-configuration.d.ts
+/*.tsbuildinfo
+/tmp/
+/supabase/.temp/
+/supabase/.branches/

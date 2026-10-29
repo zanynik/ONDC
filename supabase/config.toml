@@ -1,0 +1,3 @@
+project_id = "zeroprofit"
+[functions.protocol-store]
+verify_jwt = false

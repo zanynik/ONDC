@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "zeroprofit-preproduction",
+  "account_id": "2b1b021020ef414b0a5297a6652f7429",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-10-29",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false
+    }
+  },
+  "vars": {
+    "ONDC_DEPLOYMENT_MODE": "staging",
+    "ONDC_CALLBACK_VERIFICATION": "required",
+    "ONDC_SUBSCRIBER_ID": "ondc.zeroprofit.food",
+    "ONDC_SUBSCRIBER_URL": "https://ondc.zeroprofit.food/buyer",
+    "SUPABASE_URL": "https://ynmevkntztzfutjnbfnf.supabase.co",
+    "ZP_PROTOCOL_STORAGE": "supabase"
+  }
+}

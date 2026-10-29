@@ -4,10 +4,11 @@ import handler from "vinext/server/app-router-entry";
 import { blake2b } from "blakejs";
 import { Buffer } from "node:buffer";
 import { createHmac, createPrivateKey, sign, timingSafeEqual } from "node:crypto";
+import { boundedText, secretMatches, verifyCallbackSignature } from "./protocol-security";
+import { protocolStore, type StoreEnv } from "./protocol-store";
 
-interface Env {
+interface Env extends StoreEnv {
   ASSETS: Fetcher;
-  DB: D1Database;
   ONDC_SUBSCRIBER_ID?: string;
   ONDC_SUBSCRIBER_URL?: string;
   ONDC_SIGNING_PRIVATE_KEY?: string;
@@ -16,6 +17,9 @@ interface Env {
   ONDC_WORKBENCH_TOKEN?: string;
   ONDC_RUNNER_SIGNING_SECRET?: string;
   N_O_Token?: string;
+  ONDC_DEPLOYMENT_MODE?: string;
+  ONDC_CALLBACK_VERIFICATION?: string;
+  ONDC_TRUSTED_SIGNING_KEYS?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -69,9 +73,10 @@ function writeProtocolLog(
   statusCode: number | null,
 ) {
   const context = protocolContext(payload);
-  return env.DB.prepare(
-    "INSERT INTO ondc_protocol_logs (direction, action, transaction_id, message_id, endpoint, status_code, created_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  ).bind(direction, context.action, context.transactionId, context.messageId, endpoint, statusCode, Date.now(), rawPayload).run();
+  return protocolStore(env).writeLog({
+    direction, action: context.action, transactionId: context.transactionId,
+    messageId: context.messageId, endpoint, statusCode, createdAt: Date.now(), payload: rawPayload,
+  });
 }
 
 type ProtocolOrder = Record<string, unknown> & {
@@ -85,29 +90,11 @@ type ProtocolOrder = Record<string, unknown> & {
 };
 
 async function latestCallbackOrder(env: Env, transactionId: string, action: string): Promise<ProtocolOrder | null> {
-  const row = await env.DB.prepare(
-    "SELECT payload FROM ondc_callbacks WHERE transaction_id = ? AND action = ? ORDER BY id DESC LIMIT 1"
-  ).bind(transactionId, action).first<{ payload?: string }>();
-  if (!row?.payload) return null;
-  try {
-    const payload = JSON.parse(row.payload) as { message?: { order?: ProtocolOrder } };
-    return payload.message?.order ?? null;
-  } catch {
-    return null;
-  }
+  return await protocolStore(env).latestOrder(transactionId, [action]) as ProtocolOrder | null;
 }
 
 async function latestSettlementCallbackOrder(env: Env, transactionId: string): Promise<ProtocolOrder | null> {
-  const row = await env.DB.prepare(
-    "SELECT payload FROM ondc_callbacks WHERE transaction_id = ? AND action IN ('on_update', 'on_cancel') ORDER BY id DESC LIMIT 1"
-  ).bind(transactionId).first<{ payload?: string }>();
-  if (!row?.payload) return null;
-  try {
-    const payload = JSON.parse(row.payload) as { message?: { order?: ProtocolOrder } };
-    return payload.message?.order ?? null;
-  } catch {
-    return null;
-  }
+  return await protocolStore(env).latestOrder(transactionId, ["on_update", "on_cancel"]) as ProtocolOrder | null;
 }
 
 function protocolItems(items: Array<Record<string, unknown>> | undefined, fulfillmentId: string) {
@@ -196,7 +183,7 @@ function quoteTrailTotal(order: ProtocolOrder | null) {
     return tags?.filter((tag) => tag.code === "quote_trail")
       .flatMap((tag) => tag.list?.filter((entry) => entry.code === "value").map((entry) => entry.value) ?? []) ?? [];
   });
-  const total = [...quoteBreakupValues, ...fulfillmentTagValues].reduce((sum, rawValue) => {
+  const total = [...quoteBreakupValues, ...fulfillmentTagValues].reduce<number>((sum, rawValue) => {
     const value = Number(rawValue);
     return Number.isFinite(value) ? sum + value : sum;
   }, 0);
@@ -241,8 +228,7 @@ async function pushObservabilityLog(env: Env, type: string, data: unknown) {
 }
 
 function isExistingWorkbenchAuthorized(request: Request, env: Env) {
-  const suppliedToken = request.headers.get("x-ondc-admin-token");
-  return Boolean(suppliedToken && env.ONDC_WORKBENCH_TOKEN && suppliedToken === env.ONDC_WORKBENCH_TOKEN);
+  return secretMatches(request.headers.get("x-ondc-admin-token"), env.ONDC_WORKBENCH_TOKEN);
 }
 
 function ondcAuthorization(body: string, env: Env) {
@@ -272,6 +258,18 @@ function ondcAuthorization(body: string, env: Env) {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.hostname === "zeroprofit.food" && (request.method === "GET" || request.method === "HEAD")) {
+      url.hostname = "www.zeroprofit.food";
+      return Response.redirect(url.toString(), 308);
+    }
+
+    // A parallel migration deployment must never send signed traffic with a
+    // callback address which still points to the original service.
+    if (env.ONDC_DEPLOYMENT_MODE === "staging" &&
+        (url.pathname === "/buyer/search" || url.pathname.startsWith("/buyer/workbench/"))) {
+      return json({ error: "migration_staging", message: "Outbound ONDC actions remain disabled until cutover verification." }, 503);
+    }
 
     // The ONDC Workbench runner submits signed test actions from its browser
     // origin. Permit only that origin to complete the CORS preflight; every
@@ -313,6 +311,10 @@ const worker = {
         subscriber_url: env.ONDC_SUBSCRIBER_URL ?? `${url.origin}/buyer`,
         unique_key_configured: Boolean(env.ONDC_UNIQUE_KEY_ID),
         callbacks: [...ondcCallbacks],
+        deployment_mode: env.ONDC_DEPLOYMENT_MODE ?? "existing-preproduction",
+        callback_verification: env.ONDC_CALLBACK_VERIFICATION === "required" ? "required" : "legacy-preproduction",
+        production_ready: false,
+        storage_backend: env.ZP_PROTOCOL_STORAGE ?? "d1",
       });
     }
 
@@ -323,10 +325,22 @@ const worker = {
       }
       const transactionId = url.searchParams.get("transaction_id")?.trim();
       const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 250, 1), 1000);
-      const result = transactionId
-        ? await env.DB.prepare("SELECT * FROM ondc_protocol_logs WHERE transaction_id = ? ORDER BY id ASC LIMIT ?").bind(transactionId, limit).all()
-        : await env.DB.prepare("SELECT * FROM ondc_protocol_logs ORDER BY id DESC LIMIT ?").bind(limit).all();
-      return json({ subscriber_id: env.ONDC_SUBSCRIBER_ID, environment: "PRE-PRODUCTION", count: result.results.length, logs: result.results });
+      const logs = await protocolStore(env).listLogs(transactionId ?? null, limit);
+      return json({ subscriber_id: env.ONDC_SUBSCRIBER_ID, environment: "PRE-PRODUCTION", count: logs.length, logs });
+    }
+
+    // Private connectivity check for operators; never returns protocol payloads.
+    if (url.pathname === "/buyer/storage-health") {
+      if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+      if (!secretMatches(request.headers.get("x-zeroprofit-backend-token"), env.ZP_PROTOCOL_STORE_TOKEN)) {
+        return json({ error: "not_found" }, 404);
+      }
+      try {
+        await protocolStore(env).listLogs(null, 1);
+        return json({ storage_backend: env.ZP_PROTOCOL_STORAGE ?? "d1", connected: true });
+      } catch {
+        return json({ error: "storage_unavailable" }, 503);
+      }
     }
 
     if (url.pathname === "/buyer/search") {
@@ -392,10 +406,8 @@ const worker = {
         const suppliedBuffer = Buffer.from(suppliedSignature, "hex");
         const expectedBuffer = Buffer.from(expectedSignature, "hex");
         if (suppliedBuffer.length !== expectedBuffer.length || !timingSafeEqual(suppliedBuffer, expectedBuffer)) return json({ error: "not_found" }, 404);
-        await env.DB.prepare("CREATE TABLE IF NOT EXISTS ondc_runner_nonces (nonce TEXT PRIMARY KEY, expires INTEGER NOT NULL)").run();
-        const consumed = await env.DB.prepare("INSERT OR IGNORE INTO ondc_runner_nonces (nonce, expires) VALUES (?, ?)").bind(nonce, expires).run();
-        if (!consumed.meta.changes) return json({ error: "already_used" }, 409);
-      } else if (!env.ONDC_WORKBENCH_TOKEN || suppliedToken !== env.ONDC_WORKBENCH_TOKEN) {
+        if (!await protocolStore(env).consumeNonce(nonce, expires)) return json({ error: "already_used" }, 409);
+      } else if (!secretMatches(suppliedToken, env.ONDC_WORKBENCH_TOKEN)) {
         return json({ error: "not_found" }, 404);
       }
       const target = String(read("target") ?? "");
@@ -933,33 +945,37 @@ const worker = {
       if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
       const contentType = request.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) return json({ error: "json_required" }, 415);
-      let callbackContext: unknown;
+      let rawPayload: string;
+      let payload: { context: { action: string; transaction_id: string; message_id: string } };
       try {
-        const rawPayload = await request.text();
-        const payload = JSON.parse(rawPayload) as { context?: { action?: unknown; transaction_id?: unknown; message_id?: unknown } };
-        callbackContext = payload.context;
-        const action = typeof payload === "object" && payload !== null && "context" in payload
-          ? payload.context?.action : undefined;
-        console.log("ONDC callback received", { path: url.pathname, action });
-        if (typeof action === "string") {
-          // ACK callbacks immediately; Workbench treats a slow persistence write as
-          // a NACK even when the payload is valid. Test actions wait for their paired
-          // callback before reading this stored state.
-          ctx.waitUntil(Promise.all([
-            env.DB.prepare("INSERT INTO ondc_callbacks (action, transaction_id, message_id, received_at, payload) VALUES (?, ?, ?, ?, ?)")
-              .bind(action, typeof payload.context?.transaction_id === "string" ? payload.context.transaction_id : null, typeof payload.context?.message_id === "string" ? payload.context.message_id : null, Date.now(), rawPayload).run(),
-            writeProtocolLog(env, "INBOUND", url.pathname, rawPayload, payload, 200),
-          ]));
-          const ack = { context: payload.context, message: { ack: { status: "ACK" } } };
-          ctx.waitUntil(Promise.all([
-            pushObservabilityLog(env, action, payload),
-            pushObservabilityLog(env, `${action}_response`, ack),
-          ]));
-        }
-      } catch {
-        return json({ error: "invalid_json" }, 400);
+        rawPayload = await boundedText(request, 4 * 1024 * 1024);
+        payload = JSON.parse(rawPayload);
+      } catch (error) {
+        return json({ error: error instanceof RangeError ? "payload_too_large" : "invalid_json" }, error instanceof RangeError ? 413 : 400);
       }
-      return json({ context: callbackContext, message: { ack: { status: "ACK" } } });
+      const context = payload?.context;
+      if (!context || context.action !== url.pathname.split("/").pop() ||
+          typeof context.transaction_id !== "string" || !context.transaction_id.trim() ||
+          typeof context.message_id !== "string" || !context.message_id.trim()) {
+        return json({ error: "invalid_callback_context" }, 400);
+      }
+      if (env.ONDC_CALLBACK_VERIFICATION === "required" &&
+          !verifyCallbackSignature(request.headers.get("authorization"), rawPayload, env.ONDC_TRUSTED_SIGNING_KEYS)) {
+        return json({ error: "invalid_callback_signature" }, 401);
+      }
+      const action = context.action;
+      try {
+        await protocolStore(env).storeCallback(url.pathname, rawPayload);
+      } catch {
+        console.error("ONDC callback persistence failed", { action });
+        return json({ error: "callback_storage_unavailable" }, 503);
+      }
+      const ack = { context, message: { ack: { status: "ACK" } } };
+      ctx.waitUntil(Promise.all([
+        pushObservabilityLog(env, action, payload),
+        pushObservabilityLog(env, `${action}_response`, ack),
+      ]));
+      return json(ack);
     }
 
     return handler.fetch(request, env, ctx);

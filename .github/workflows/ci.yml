@@ -1,0 +1,24 @@
+name: Verify buyer integration
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx wrangler types --config wrangler.jsonc
+      - run: npx tsc --noEmit
+      - run: npm test
+        env:
+          ZEROPROFIT_HOSTING: cloudflare
+      - run: npx wrangler deploy --dry-run --config dist/server/wrangler.json

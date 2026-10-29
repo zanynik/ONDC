@@ -1,113 +1,118 @@
-# vinext-starter
+# ZeroProfit — foundation website and ONDC integration
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Independent **Cloudflare Workers + Supabase** application, currently restricted
+to pre-production. Live customer ordering and payments are not open.
 
-## Prerequisites
+- Preview: https://zeroprofit-preproduction.zanynik.workers.dev
+- Account: https://zeroprofit-preproduction.zanynik.workers.dev/account
+- Supabase project: `zeroprofit` (`ynmevkntztzfutjnbfnf`), Mumbai, separate from SlowClaw.
+- Repository: https://github.com/zanynik/ONDC
+- Exact original ChatGPT Sites v53 source: branch `backup/sites-v53`, recovered
+  from Sites commit `4460743eb78282341d8e88f907438ee4aaa67065`.
 
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
+## What is implemented
 
-## Sites Lifecycle
+- Foundation website, disclosures, terms and support information.
+- Account UI: email/password sign-in/sign-up, own-order history and support tickets.
+- Supabase Postgres foundation for profiles, orders/events, payments, refunds,
+  settlements and support, with ownership-based row-level security.
+- A private `support-attachments` storage bucket and owner-folder access policies.
+  The current support form is text-only; attachment upload UI is not implemented.
+- Private ONDC callbacks/logs/nonces, connected through an authenticated Edge
+  Function. Callback+audit writes are atomic and duplicate receipts are ignored.
+- Cloudflare callback signature verification using explicitly trusted public keys,
+  bounded request bodies and timing-safe admin-token checks.
+- Separate Cloudflare staging configuration; outbound ONDC actions are disabled.
+- Source CI and a manual independent deployment workflow.
 
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
+These database tables are foundations, **not working payment/refund/settlement
+integrations**. Workbench payload builders still contain test-only sample
+providers, billing details, mock PAID claims and finder-fee fixtures.
 
-This starter does not use `wrangler.jsonc`.
+## Current hosting
 
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
+| Address | Status |
+| --- | --- |
+| `www.zeroprofit.food` | Existing ChatGPT Site; no DNS cutover yet |
+| `ondc.zeroprofit.food/buyer` | Existing Sites pre-production backend |
+| `zeroprofit.food` | Separate GoDaddy page; apex redirect still pending |
+| `zeroprofit-preproduction.zanynik.workers.dev` | Independent Cloudflare preview using Supabase |
 
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
+## Run and test
 
-## Included Shape
+Use Node.js 24:
 
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```sh
+npm ci
+npx wrangler types --config wrangler.jsonc
+npx tsc --noEmit
+ZEROPROFIT_HOSTING=cloudflare npm test
+npx wrangler deploy --dry-run --config dist/server/wrangler.json
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+Tests cover rendering, protocol signatures and tampering, persistence failures,
+receipt retries, correct Buyer Delivery order IDs, the Supabase storage adapter,
+and the private gateway. Mock tests are not ONDC certification. Hosted verification
+also exercised real Postgres writes, readback, replay protection and anonymous
+access; rollback-only SQL verified customer isolation and backend privileges.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+The default build retains the original Sites configuration. Setting
+`ZEROPROFIT_HOSTING=cloudflare` selects `wrangler.jsonc`. The Vite plugin emits
+`dist/server/wrangler.json`; use that file for native Wrangler deployment.
+Legacy `db/index.ts` and D1 migrations are retained only for Sites compatibility.
+The independent Worker selects Supabase and does not bind D1.
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with
-  `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper
-  module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can
-  prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned
-  `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+## Deploy
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+The GitHub `Deploy independent pre-production` workflow is manually triggered.
+Configure `CLOUDFLARE_API_TOKEN` in GitHub's `preproduction` environment to use it.
+It builds/tests and deploys the Worker and native static assets. No domain changes
+are included. The scoped token needs Workers deployment access for the configured
+account; this workflow does not manage Supabase schema or secrets.
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+For Supabase, version-controlled migrations are in `supabase/migrations/` and
+the `protocol-store` Edge Function is in `supabase/functions/protocol-store/`.
+Use an authenticated Supabase CLI session to deploy subsequent changes, verifying
+remote migration history before applying them. Generated DB types live in
+`db/supabase.types.ts`.
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+Connector-based initial deployment uses `scripts/prepare-native-assets.mjs` and
+`scripts/upload-native-assets.py`: only short-lived upload-session tokens pass
+through hidden stdin. Ordinary Wrangler deployment handles assets automatically.
+No generated bundles or credentials should be committed.
 
-## Diagnostic Commands
+## Secrets and access
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build and verify the rendered development-preview metadata
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+- `SUPABASE_URL` and the frontend publishable key are public identifiers.
+- `ZP_PROTOCOL_STORE_TOKEN` is a server-only Cloudflare secret. The database
+  retains only its SHA-256 hash in `private.backend_credentials`.
+- The `protocol-store` Edge Function performs its own token authentication.
+  Supabase's JWT gateway check is disabled for this machine-to-machine endpoint;
+  a publishable key alone cannot authorize it.
+- The function obtains a backend key from Supabase's runtime environment. It
+  supports new `SUPABASE_SECRET_KEYS` and a legacy compatibility fallback.
+  No Supabase service key is exposed to the Worker or browser.
+- Service-only RPCs and protocol tables are inaccessible to customers.
+  Customer RLS cannot create/alter paid orders, payment records or settlements.
+- Anonymous API access does not expose customer or protocol records.
+- `GET /buyer/storage-health` requires the backend-token header and verifies
+  Cloudflare → Edge Function → Postgres connectivity without returning records.
+- Keep ONDC keys, API tokens, `.env*` and `.dev.vars*` out of Git. Do not rotate
+  registered ONDC keys merely to facilitate migration.
 
-Use build commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
+## Remaining setup
 
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+1. Configure Supabase Auth Site URL and allowed redirect URLs for the preview
+   and final `/account` page; configure production SMTP before public sign-ups.
+   No signup email was sent or email-delivery flow verified during this work.
+2. Restore the original ONDC signing/encryption keys, unique key ID, N.O. token
+   and Workbench/admin tokens into Cloudflare secrets/settings.
+3. Configure trusted callback signing public keys from verified registry records.
+   Automatic registry refresh and an observability retry queue remain unfinished.
+4. Complete signed Workbench reverification and live grievance/payout validation.
+5. Export/preserve existing Sites logs and arrange the external DNS/hosting
+   cutover. No old test data or nonces were imported automatically.
+6. Build and verify real catalog/cart/checkout, payments, refunds, settlement and
+   operations support before accepting real orders.
 
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+See [the cutover runbook](docs/STATUS-AND-CUTOVER.md).

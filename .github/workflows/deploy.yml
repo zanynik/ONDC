@@ -1,0 +1,25 @@
+name: Deploy independent pre-production
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zeroprofit-preproduction-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: preproduction
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: 2b1b021020ef414b0a5297a6652f7429
+      ZEROPROFIT_HOSTING: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx wrangler deploy --config dist/server/wrangler.json
