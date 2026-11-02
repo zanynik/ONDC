@@ -39,8 +39,11 @@ Last signed-in portal inspection on 2 November 2026 showed:
 | Production subscription/start transacting | Pending |
 
 Do not sign the agreement again or mark the walkthrough ready automatically.
-The portal session subsequently expired. Two support requests were saved as
-email drafts; they have not been sent and no new ticket reference exists.
+The portal session subsequently expired. After the owner's explicit approval,
+two support emails were sent on 2 November 2026: agreement reconciliation to
+portal-support@ondc.org and the go-live/report checklist to team@ondc.org.
+Gmail confirmed SENT for both. Await ONDC responses and actual ticket references;
+sending an email does not establish that a portal ticket has been opened.
 
 ## Technical validation
 
@@ -96,7 +99,24 @@ Saved and verified:
   synthetic password was rejected with HTTP 422 / weak_password and the
   expected ten-character minimum. No test signup succeeded and no email was sent.
 
-Custom SMTP remains disabled. Configure a verified sender before public signup. Supabase's
+Custom SMTP remains disabled. The owner selected Resend's Free plan on
+2 November 2026. Account signup/login is the next blocker; no Resend domain,
+API key or SMTP configuration has been created yet.
+
+Planned integration (not yet applied):
+- Verify a dedicated sending subdomain, preferably `auth.zeroprofit.food`, after
+  checking for existing DNS use. Use Resend's exact generated DNS records.
+- Sender: `ZeroProfit Food <noreply@auth.zeroprofit.food>` once verified.
+- SMTP host `smtp.resend.com`, port `465`, username `resend`.
+- The SMTP password is a Resend API key; store it only in Supabase's secure
+  settings, never in this repository or chat. Prefer sending-only permission
+  restricted to the verified sending domain.
+- Keep open/click tracking off for authentication messages.
+- Stay on Free, without paid upgrades or pay-as-you-go. The published allowance
+  checked on 2 November is 3,000 emails/month and 100/day.
+- Test real signup, confirmation, login and logout only after delivery is ready.
+
+Configure a verified sender before public signup. Supabase's
   default email service is restricted to team addresses and is not production
   mail delivery. Use the provider's exact DNS records, preserving existing SPF.
 - Verify signup, confirmation, login and logout with an owner test account.
@@ -113,9 +133,9 @@ portal checkbox does not prove the migrated Worker sends logs.
 
 1. Resolve the remaining Workbench report failures, rerun with the metadata fix,
    and run the mandatory scenarios/versions confirmed by ONDC.
-2. Send the prepared support requests after specific recipient/disclosure
-   confirmation; reconcile the agreement and get the remaining acceptance and
-   walkthrough checklist in writing. Record actual ticket references.
+2. Follow up on the two sent support emails; reconcile the agreement and get
+   the remaining acceptance and walkthrough checklist in writing. Record actual
+   ticket references when ONDC supplies them.
 3. Complete SMTP/email delivery and network-observability configuration and verify both.
 4. Implement real catalog/search, cart, checkout, payments, cancellations,
    refunds, grievance operations and settlement/reconciliation. The current
