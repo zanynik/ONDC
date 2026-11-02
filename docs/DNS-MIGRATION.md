@@ -1,5 +1,7 @@
 # DNS migration — 2 November 2026
 
+> Latest checkpoint: the public website, apex redirect and ONDC hostname now route to the independent Cloudflare Worker, using Supabase storage. Replacement private keys were verified against ONDC's subscribed registry record. See [ONDC-KEY-ROTATION.md](ONDC-KEY-ROTATION.md) for current verification and remaining acceptance work. Earlier cutover notes below describe the migration sequence and are historical where they say ONDC is still hosted on Sites.
+
 Cloudflare account: `2b1b021020ef414b0a5297a6652f7429`.
 Cloudflare zone: `a27eaad9460c4df5f52fddfd1c32894e` (`zeroprofit.food`, Free Website plan).
 Assigned nameservers: `iris.ns.cloudflare.com`, `johnny.ns.cloudflare.com`.
