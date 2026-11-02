@@ -69,7 +69,8 @@ metadata and a mock settlement field needing attention. See the current
 - Complete the active Workbench end-to-end acceptance run and callback persistence
   verification for the real Workbench signer.
 - Transfer/configure the network-observability token and verify submissions.
-- Complete Supabase hosted Auth redirect/SMTP configuration and real email tests.
+- Auth site/redirect URLs and the ten-character password minimum are saved; email
+  confirmation remains enabled. Complete custom SMTP and real email tests.
 - Obtain a complete export of historical Sites protocol data. Keep the old Site
   and D1 database for history/rollback; bounded row responses truncate payloads
   and are not a usable full export.

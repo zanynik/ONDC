@@ -83,14 +83,20 @@ that is not evidence for trusting that identity.
 
 ### Supabase Auth
 
-The connected plugin does not expose hosted Auth settings. Dashboard sign-in is
-required; never send a management token through chat.
+The connected plugin does not expose hosted Auth settings. The owner signed in
+with ChatGPT and the ZeroProfit dashboard was verified on 2 November 2026.
+Never send a management token through chat.
 
+Saved and verified:
 - Site URL: `https://www.zeroprofit.food`.
 - Exact allowed redirects: `https://www.zeroprofit.food/account` and
   `https://zeroprofit-preproduction.zanynik.workers.dev/account`.
-- Keep email confirmation enabled; align minimum password length to 10.
-- Configure a verified custom SMTP sender before public signup. Supabase's
+- Email provider and email confirmation are enabled.
+- Minimum password length is now 10. A live API test with a nine-character
+  synthetic password was rejected with HTTP 422 / weak_password and the
+  expected ten-character minimum. No test signup succeeded and no email was sent.
+
+Custom SMTP remains disabled. Configure a verified sender before public signup. Supabase's
   default email service is restricted to team addresses and is not production
   mail delivery. Use the provider's exact DNS records, preserving existing SPF.
 - Verify signup, confirmation, login and logout with an owner test account.
@@ -110,7 +116,7 @@ portal checkbox does not prove the migrated Worker sends logs.
 2. Send the prepared support requests after specific recipient/disclosure
    confirmation; reconcile the agreement and get the remaining acceptance and
    walkthrough checklist in writing. Record actual ticket references.
-3. Complete Auth/email and network-observability configuration and verify both.
+3. Complete SMTP/email delivery and network-observability configuration and verify both.
 4. Implement real catalog/search, cart, checkout, payments, cancellations,
    refunds, grievance operations and settlement/reconciliation. The current
    repository contains account/support and protocol foundations plus synthetic
