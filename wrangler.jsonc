@@ -22,5 +22,16 @@
     "ONDC_SUBSCRIBER_URL": "https://ondc.zeroprofit.food/buyer",
     "SUPABASE_URL": "https://ynmevkntztzfutjnbfnf.supabase.co",
     "ZP_PROTOCOL_STORAGE": "supabase"
-  }
+  },
+  "routes": [
+    {
+      "pattern": "www.zeroprofit.food",
+      "custom_domain": true
+    },
+    {
+      "pattern": "zeroprofit.food",
+      "custom_domain": true
+    }
+  ]
 }
+
