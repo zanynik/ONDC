@@ -1,27 +1,45 @@
-# ONDC production next steps — checked 29 October 2026
+# ONDC production next steps — checked 2 November 2026
 
 ## Current portal evidence
 
-ONDC's email of 20 October says business profile Buyer NP / Retail (B2C) v1.2
-was disabled for inactivity. Re-enable it from the portal's Integrations menu;
-ONDC says the journey resumes where it stopped. Organization: 16047;
-integration profile: 16047–10732.
+Signed-in portal inspected on 2 November 2026. Organization 16047,
+integration profile 16047–10732 (Retail B2C / Buyer) was disabled. It has now
+been re-enabled successfully; the visible status is **Integration in Progress**.
 
-The 19 October pending-submissions email listed:
-- Network Participant Agreement still pending.
-- Live customer grievance and payout walkthrough pending.
-- Build verification pending.
-- Start-transacting details pending.
+The existing PreProd subscription is **Subscribed**:
+- Subscriber ID: `ondc.zeroprofit.food`.
+- Subscriber URL: `https://ondc.zeroprofit.food/buyer`.
+- Existing UKID: `5f6cf834-19d6-42de-8c03-d13208a4b42d`.
+- Keys expire 27 August 2027; subscription last updated 27 August 2026.
+- The View panel exposes public keys only. The Edit form offers an unchecked
+  **Generate new key pair** option, explicitly replacing signing/encryption keys.
+  No original-private-key download was visible in these inspected panels.
+  No keys were rotated and no subscription fields were changed.
 
-Agreement issue ONWGR-011708 was closed on 15 October without resolving the
-pending status. Verify the current portal status before reopening a ticket.
-Do not re-sign a legal agreement automatically or claim the pending work is done.
+Current portal task status:
+- NP Agreement: **Pending**. The board resolution and NP-Agreement.pdf are
+  attached; an E-Sign action remains available. Do not sign again automatically.
+- Points of contact and public website details: **Completed**.
+- Build-components declaration: **Completed** (a portal declaration, not proof
+  that the independent shopping/payment application is complete).
+- Live grievance/payout walkthrough: **Pending**, readiness checkbox unchecked.
+- Workbench build verification: **Pending**.
+- Network-observability key generation and preprod log submission: **Completed**.
+- Static terms/disclosures: **Completed**.
+- Production subscription/start-transacting: **Pending**, dependent on the live
+  walkthrough and build verification. No production subscription was created.
+
+Agreement support issue ONWGR-011708 was previously closed without resolving
+the pending status. Reconcile the already signed agreement with ONDC.
+The registry endpoints passed GitHub CI at e9aa4ceb78d557386f312c4c30e19a80ccea42a0,
+but their deployment is still outstanding. Cloudflare's last verified deployed
+script predates that commit. Do not describe source completion as deployment.
 
 ## Obtain the four configuration items
 
 | Item | Where it comes from | Next action |
 | --- | --- | --- |
-| Own signing/encryption private keys | The original ONDC subscription key download or another securely retained original | Inspect the existing subscription's Download Keys action. The 1 October portal update announced an enhanced download. Do not regenerate or rotate merely to inspect it. Confirm whether existing private keys are downloadable; the email alone does not prove that. |
+| Own signing/encryption private keys | The original ONDC subscription key download or another securely retained original | The inspected View panel exposes only public keys; Edit offers replacement key generation. Recover the original secure download/backup first. If unavailable, prepare a coordinated key rotation with the hosted service and registry; do not replace keys before the service can be updated. |
 | Trusted callback signing public keys | Verified ONDC registry records for each sender and matching unique key ID | Use the current environment's signed v2.0 lookup. Match subscriber ID, unique key ID, algorithm, validity and subscription status before pinning a public key. These are public verification keys, not our private keys. |
 | Email-login configuration | Supabase Authentication settings and a transactional email provider | Apply the URL configuration below, configure SMTP, verify its sending domain and test confirmation/sign-in. Keep email confirmation enabled. |
 | DNS | GoDaddy DNS/registrar, with the existing records preserved | Inventory/export the complete zone before any nameserver change. Include mail, verification and ONDC TXT records. Attach and verify the independent host only after the inventory is complete. |
@@ -73,7 +91,7 @@ Workbench fixtures remain locked in staging and contain mock payment data.
 
 ## Sequence to production
 
-1. Re-enable the existing integration and inspect its subscription/key package.
+1. Integration re-enabled and subscription inspected. Next recover the original private-key backup, or coordinate rotation when the independent service can be updated.
 2. Reconcile the NP Agreement status and outstanding ONDC verification tasks.
 3. Configure/retest the independent service with the original pre-production
    keys, trusted senders, correct request ID and the approved callback address.
