@@ -1,5 +1,7 @@
 # ZeroProfit status and cutover — 2 November 2026
 
+> Latest checkpoint: the public website, apex redirect and ONDC hostname now route to the independent Cloudflare Worker, using Supabase storage. Replacement private keys were verified against ONDC's subscribed registry record. See [ONDC-KEY-ROTATION.md](ONDC-KEY-ROTATION.md) for current verification and remaining acceptance work. Earlier cutover notes below describe the migration sequence and are historical where they say ONDC is still hosted on Sites.
+
 ## Deployed independent foundation
 
 - Cloudflare Worker: `zeroprofit-preproduction`, account
