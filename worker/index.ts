@@ -307,6 +307,7 @@ const worker = {
       if (!isExistingWorkbenchAuthorized(request, env)) return json({ error: "not_found" }, 404);
       if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
       if (!(request.headers.get("content-type") ?? "").includes("application/json")) return json({error:"json_required"},415);
+      let upstreamStatus: number | null = null;
       try {
         const input = JSON.parse(await boundedText(request, 4096)) as Record<string, unknown>;
         if (!input || typeof input !== 'object' || Array.isArray(input) ||
@@ -315,10 +316,14 @@ const worker = {
         if (environment !== "preproduction") return json({error:"preproduction_only"},503);
         const body = JSON.stringify({country:"IND",domain:"ONDC:RET10",subscriber_id:input.subscriber_id ?? env.ONDC_SUBSCRIBER_ID});
         const authorization = ondcAuthorization(body, env);
-        const response = await fetch("https://preprod.registry.ondc.org/v2.0/lookup", {method:"POST",headers:{"content-type":"application/json",authorization},body,redirect:"error",signal:AbortSignal.timeout(15000)});
+        const response = await fetch("https://preprod.registry.ondc.org/v2.0/lookup", {method:"POST",headers:{"content-type":"application/json",authorization},body,redirect:"error",signal:AbortSignal.timeout(30000)});
+        upstreamStatus = response.status;
         const payload = await boundedText(new Request("https://registry-response.invalid",{method:"POST",body:response.body,duplex:"half"} as RequestInit),524288);
         return json({upstream_status:response.status, records:JSON.parse(payload)},response.ok ? 200 : 502);
-      } catch { return json({error:"registry_lookup_failed"},502); }
+      } catch (error) {
+        const reason = error instanceof Error && ['TimeoutError','AbortError','SyntaxError','TypeError','RangeError'].includes(error.name) ? error.name : 'configuration_or_upstream_error';
+        return json({error:"registry_lookup_failed",reason,upstream_status:upstreamStatus},502);
+      }
     }
     if (url.pathname === "/ondc-site-verification.html") {
       if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
