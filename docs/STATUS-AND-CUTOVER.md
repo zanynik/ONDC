@@ -1,4 +1,4 @@
-# ZeroProfit status and cutover — 29 October 2026
+# ZeroProfit status and cutover — 2 November 2026
 
 ## Deployed independent foundation
 
@@ -96,3 +96,39 @@ ONDC emailed on 20 October that the buyer profile was disabled for inactivity;
 it can be re-enabled under Integrations. The agreement ticket was closed on
 15 October. See [the current production checklist](ONDC-PRODUCTION-NEXT-STEPS.md)
 for key recovery, exact email settings, DNS and the portal approval sequence.
+
+
+## Migration execution update — 2 November 2026
+
+The goal is to migrate existing Sites functionality independently of ONDC's
+production approval. The chosen runtime remains Cloudflare Workers + native
+static assets, with Supabase for Postgres/Auth and the private storage gateway.
+GitHub hosts source and build checks. GitHub Pages is not used; the existing
+application has server-side rendering and ONDC request handlers.
+
+Latest independent deployment: `4909754ec22f4809b7831fb1df60f297`, built from
+repository main `68b4b260a48503f9ccdc178e374ce9203682d85c`.
+All 22 regression tests passed. Live GET checks returned 200 for `/`, `/account`,
+`/support`, `/terms`, `/disclosures`, `/ondc-setup` and `/buyer/health`.
+The registry verification page returns 503 until configured; GET on the
+POST-only `/buyer/on_subscribe` returns 405. Existing secret bindings and static
+assets were preserved. Browser verified the rendered independent homepage.
+
+No live custom-domain DNS has changed. The complete migration is **not yet
+finished**: GoDaddy DNS access/inventory and the ONDC key transfer remain required.
+The original preprod subscription remains registered at the original hostname.
+Do not switch ONDC callbacks to a service whose private keys are missing.
+Supabase Auth redirect/SMTP configuration remains pending; this is separate from
+preserving the original public information pages and ONDC test functionality.
+
+Legacy database inspection confirms three tables: `ondc_callbacks`,
+`ondc_protocol_logs`, `ondc_runner_nonces`. The Sites connector's bounded row
+responses truncate some callback/log payloads, so these responses are not a
+complete export and have not been imported into Supabase. Obtain a full export
+through the supported database UI/export path before retiring the original Site.
+Keep historical rows separate from newly verified callbacks. Expired runner
+nonces should not be revived as part of migration.
+
+The ONDC integration was re-enabled successfully; the existing PreProd
+subscription remains Subscribed. See ONDC-PRODUCTION-NEXT-STEPS.md for the
+verified portal status. These approval tasks must not be confused with hosting.
