@@ -102,6 +102,19 @@ test('strict callbacks reject unsigned, altered and expired messages; accept a p
   assert.equal((await call('/buyer/on_init', post(payload, header))).status, 200);
 });
 
+test('preproduction signature diagnostics are fixed reasons and never echo credentials or payloads', async t => {
+  const keys = signer();
+  const { call, env, DB } = fixture(t, { ONDC_DEPLOYMENT_MODE: 'preproduction', ONDC_CALLBACK_VERIFICATION: 'required', ONDC_TRUSTED_SIGNING_KEYS: keys.trusted });
+  const payload = callback();
+  const unknownHeader = signer().header(JSON.stringify(payload));
+  const response = await call('/buyer/on_init', post(payload, unknownHeader));
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: 'invalid_callback_signature', reason: 'signature_mismatch', signer: 'seller.example|key-1|ed25519' });
+  assert.equal(DB.sqlite.prepare('SELECT count(*) AS n FROM ondc_callbacks').get().n, 0);
+  env.ONDC_DEPLOYMENT_MODE = 'production';
+  assert.deepEqual(await (await call('/buyer/on_init', post(payload, unknownHeader))).json(), { error: 'invalid_callback_signature' });
+});
+
 test('callback retry writes one callback and one audit record', async t => {
   const { call, DB } = fixture(t);
   for (let i = 0; i < 2; i++) {
@@ -130,7 +143,11 @@ test('Buyer Delivery confirm carries actual order ID from on_init into order_det
   const keys = signer();
   const { call } = fixture(t, { ONDC_WORKBENCH_TOKEN: 'unit-test-token', ONDC_SIGNING_PRIVATE_KEY: keys.seed, ONDC_SUBSCRIBER_ID: 'buyer.example', ONDC_SUBSCRIBER_URL: 'https://buyer.example/buyer', ONDC_UNIQUE_KEY_ID: 'key-1' });
   await call('/buyer/on_select', post(callback('on_select', 'select-message')));
-  await call('/buyer/on_init', post(callback()));
+  const initialized = callback();
+  initialized.message.order.items[0].location_id = 'actual-location';
+  initialized.message.order.items[0].parent_item_id = 'actual-parent';
+  initialized.message.order.items[0].tags = [{ code: 'type', list: [{ code: 'type', value: 'item' }] }];
+  await call('/buyer/on_init', post(initialized));
   const originalFetch = globalThis.fetch;
   let sent;
   globalThis.fetch = async (url, options) => {
@@ -142,7 +159,11 @@ test('Buyer Delivery confirm carries actual order ID from on_init into order_det
   try {
     const response = await call('/buyer/workbench/confirm', { method: 'POST', headers: { 'x-ondc-admin-token': 'unit-test-token', 'x-ondc-transaction-id': 'transaction-1', 'x-ondc-workbench-flow': 'buyer-delivery' } });
     assert.equal(response.status, 200);
+    assert.equal(sent.context.bpp_id, 'workbench.ondc.tech');
     assert.equal(sent.message.order.id, 'REAL-ORDER-987');
+    assert.equal(sent.message.order.items[0].location_id, 'actual-location');
+    assert.equal(sent.message.order.items[0].parent_item_id, 'actual-parent');
+    assert.deepEqual(sent.message.order.items[0].tags, initialized.message.order.items[0].tags);
     const details = sent.message.order.fulfillments[0].tags.find(t => t.code === 'order_details');
     assert.equal(details.list.find(t => t.code === 'id').value, 'REAL-ORDER-987');
   } finally { globalThis.fetch = originalFetch; }

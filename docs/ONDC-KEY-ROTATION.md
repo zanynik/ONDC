@@ -52,10 +52,17 @@ The ONDC hostname now has an enabled Cloudflare Worker Custom Domain:
   cached requests still reached the old Site before DNS propagation completed.
 - Public www and apex already use the same independent Worker.
 
-A preprod Workbench select request reached ONIX and returned error 412:
-“No active expectation found” for its fresh synthetic transaction. This is
-not an end-to-end flow pass. Start an active Workbench scenario and repeat the
-select/init/confirm/callback checks before claiming flow acceptance.
+A real active Workbench cancellation scenario now completed select/init/confirm/
+cancel and all four callbacks with ACKs. Strict signature verification remained
+required and all eight HTTP-200 audit records were persisted in Supabase. The
+fixture BPP ID was corrected from `sample-bpp-id` to `workbench.ondc.tech` so the
+callback signer matches the exact registry-pinned identity.
+
+ACK completion is not full compliance acceptance. The generated report includes
+307 failures across the initial failed Buyer Delivery attempt and corrected
+cancellation flow; cancellation-only sections contain five failures, with item
+metadata and a mock settlement field needing attention. See the current
+[production checklist](ONDC-PRODUCTION-NEXT-STEPS.md) for the precise breakdown.
 
 ## Remaining work
 

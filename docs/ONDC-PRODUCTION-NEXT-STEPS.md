@@ -1,118 +1,133 @@
 # ONDC production next steps — checked 2 November 2026
 
-> Hosting migration update: all three live hostnames use Cloudflare; current storage uses Supabase. The key-recovery and DNS steps below describe the earlier sequence. Replacement keys and trusted Workbench/gateway keys have now been verified. Production approval, active-scenario acceptance, email setup and observability completion remain pending.
+## Current state
 
-## Current portal evidence
+All three live hostnames (`www.zeroprofit.food`, `zeroprofit.food`, and
+`ondc.zeroprofit.food`) route to the independent Cloudflare Worker. Protocol
+storage uses the separate ZeroProfit Supabase project `ynmevkntztzfutjnbfnf`.
+The old ChatGPT Site and D1 data remain for history and rollback; historical
+payloads have not been fully exported or imported.
 
-Signed-in portal inspected on 2 November 2026. Organization 16047,
-integration profile 16047–10732 (Retail B2C / Buyer) was disabled. It has now
-been re-enabled successfully; the visible status is **Integration in Progress**.
+The application is in **preproduction**, requires signed callbacks, and reports
+`production_ready:false`. Cloudflare's custom-domain environment label
+`production` does not mean ONDC production approval.
 
-The existing PreProd subscription is **Subscribed**:
+- Organisation: 16047; Retail B2C buyer profile: 16047–10732.
 - Subscriber ID: `ondc.zeroprofit.food`.
 - Subscriber URL: `https://ondc.zeroprofit.food/buyer`.
-- Existing UKID: `a760e7ab-df2e-47eb-8287-dce8deb0ea3e`.
-- Keys expire 27 August 2027; subscription last updated 27 August 2026.
-- The View panel exposes public keys only. The Edit form offers an unchecked
-  **Generate new key pair** option, explicitly replacing signing/encryption keys.
-  No original-private-key download was visible in these inspected panels.
-  No keys were rotated and no subscription fields were changed.
+- Current UKID: `a760e7ab-df2e-47eb-8287-dce8deb0ea3e`.
+- Authenticated registry lookup verified SUBSCRIBED and matching public keys,
+  valid 2 November 2026 through 2 November 2027. Older key IDs and dates are
+  superseded. See [ONDC-KEY-ROTATION.md](ONDC-KEY-ROTATION.md).
+- The owner entered replacement private keys directly into Cloudflare secrets.
+  Do not put keys, operator tokens or signed request headers in this repository.
 
-Current portal task status:
-- NP Agreement: **Pending**. The board resolution and NP-Agreement.pdf are
-  attached; an E-Sign action remains available. Do not sign again automatically.
-- Points of contact and public website details: **Completed**.
-- Build-components declaration: **Completed** (a portal declaration, not proof
-  that the independent shopping/payment application is complete).
-- Live grievance/payout walkthrough: **Pending**, readiness checkbox unchecked.
-- Workbench build verification: **Pending**.
-- Network-observability key generation and preprod log submission: **Completed**.
-- Static terms/disclosures: **Completed**.
-- Production subscription/start-transacting: **Pending**, dependent on the live
-  walkthrough and build verification. No production subscription was created.
+## Portal approval gates
 
-Agreement support issue ONWGR-011708 was previously closed without resolving
-the pending status. Reconcile the already signed agreement with ONDC.
-The registry endpoints and protected operator diagnostics are now deployed on Cloudflare. Replacement keys match the subscribed registry record; the ONDC hostname now routes to the independent Worker. See [ONDC-KEY-ROTATION.md](ONDC-KEY-ROTATION.md) for the latest verified keys, deployment and remaining active-Workbench test requirement.
+Last signed-in portal inspection on 2 November 2026 showed:
 
-## Obtain the four configuration items
+| Task | Status |
+| --- | --- |
+| Integration | In Progress; profile re-enabled |
+| Preprod subscription | Subscribed |
+| NP Agreement | Pending; existing documents attached; reconcile with support |
+| Contacts/public website and static disclosures | Completed |
+| Build-components declaration | Completed declaration; not implementation proof |
+| Workbench build verification | Pending |
+| Live grievance/payout walkthrough | Pending; readiness checkbox unchecked |
+| Observability token/preprod logs | Previously marked Completed; token absent from the new Worker, so revalidation required |
+| Production subscription/start transacting | Pending |
 
-| Item | Where it comes from | Next action |
-| --- | --- | --- |
-| Own signing/encryption private keys | The original ONDC subscription key download or another securely retained original | The inspected View panel exposes only public keys; Edit offers replacement key generation. Recover the original secure download/backup first. If unavailable, prepare a coordinated key rotation with the hosted service and registry; do not replace keys before the service can be updated. |
-| Trusted callback signing public keys | Verified ONDC registry records for each sender and matching unique key ID | Use the current environment's signed v2.0 lookup. Match subscriber ID, unique key ID, algorithm, validity and subscription status before pinning a public key. These are public verification keys, not our private keys. |
-| Email-login configuration | Supabase Authentication settings and a transactional email provider | Apply the URL configuration below, configure SMTP, verify its sending domain and test confirmation/sign-in. Keep email confirmation enabled. |
-| DNS | GoDaddy DNS/registrar, with the existing records preserved | Inventory/export the complete zone before any nameserver change. Include mail, verification and ONDC TXT records. Attach and verify the independent host only after the inventory is complete. |
+Do not sign the agreement again or mark the walkthrough ready automatically.
+The portal session subsequently expired. Two support requests were saved as
+email drafts; they have not been sent and no new ticket reference exists.
 
-The recorded existing unique key ID is
-`a760e7ab-df2e-47eb-8287-dce8deb0ea3e`. Compare it with the actual portal
-subscription; it is not a replacement for inspecting the current record.
-The Sites API masks private secret values. If the original private keys cannot
-be recovered from a legitimate backup/download, coordinate a new key pair and
-registry update through ONDC. A new public key cannot recover an old private key.
-Enter private key material into secure settings, never a Git commit or chat.
+## Technical validation
 
-## Supabase settings to apply (not yet applied)
+A real Workbench RET10 / 1.2.5 / GROCERY preprod session was started. Initial
+fixture calls used `sample-bpp-id`; Workbench copied that into its callback
+signer ID, which correctly failed the exact trusted-key check. Fixtures now use
+`workbench.ondc.tech`, matching the authenticated registry record. Do not add a
+sample signer alias or disable signature checks to mask this error.
 
-Project: `zeroprofit` / `ynmevkntztzfutjnbfnf`.
+The corrected cancellation scenario completed all eight request/callback steps
+with ACKs: select, init, confirm and cancel. Supabase contains one HTTP-200 audit
+record for each direction/action. Transaction:
+`60ec287d-5ef0-49cf-af0c-89581590416f`.
 
-- During preview, Site URL: `https://zeroprofit-preproduction.zanynik.workers.dev`.
-- Allowed redirect URL: `https://zeroprofit-preproduction.zanynik.workers.dev/account`.
-- Also allow the future final URL: `https://www.zeroprofit.food/account`.
-- At domain cutover, Site URL becomes `https://www.zeroprofit.food`.
-- Keep email confirmations enabled. The application requires 10 characters for
-  new passwords; align the server password policy with that requirement.
-- Use verified custom SMTP before public signups. Configure sender identity and
-  the provider's exact SPF/DKIM records; do not guess values or replace an
-  existing SPF record without merging its authorized senders.
-- Verify registration, email confirmation, sign-in and sign-out with the owner
-  before inviting other customers. No authentication email was sent here.
+Workbench report `PW_jGgobcSvNeggmUoB4yc7ObnR-0LFi7wn`, generated at
+2026-11-02T20:48:24.791Z, includes both the initial failed Buyer Delivery attempt
+and the corrected cancellation exchange: 3,292 checks, 2,985 passed, 307 failed.
+These totals must not be described as cancellation-only counts. Within the
+cancellation sections there are five failures out of 1,769 checks: four buyer
+payload checks (init parent_item_id twice, init tags, confirm location_id) and
+one Workbench mock on_init settlement upi_address check. The item helper now
+preserves parent_item_id/tags/location_id and carries the fixture location L1
+into confirm; this subsequent metadata change has local coverage but has not
+been rerun through a fresh full Workbench report. Do not invent catalog parent
+relationships merely to satisfy a validator; confirm the conditional rules and
+mock response with ONDC. The report labels its environment staging despite the
+session UI being PRE-PRODUCTION; ask ONDC how to interpret that label.
 
-The connected Supabase tools do not expose Auth configuration updates. Use the
-signed-in dashboard, or an authenticated Management API/CLI session. Do not send
-a management access token through chat to work around a dashboard login.
+The full mandatory scenario set still needs acceptance.
+Preprod signature failures now return a fixed diagnostic reason and a bounded
+public signer identifier; production responses retain the generic error. No
+private key, signature or unverified callback body is echoed or persisted.
 
-## Registry endpoints implemented
+Direct Worker-to-registry transport still fails before an HTTP response. The
+operator-only prepared lookup can be sent by an authenticated verification
+client without exporting the private key. A later sample-ID lookup returned 401;
+that is not evidence for trusting that identity.
 
-The independent source now includes:
-- `GET /ondc-site-verification.html`: signs the exact
-  `ONDC_SUBSCRIPTION_REQUEST_ID` using `ONDC_SIGNING_PRIVATE_KEY`.
-- `POST /buyer/on_subscribe`: X25519 shared-secret + AES-256-ECB challenge
-  decryption, matching ONDC's reference utility.
+## Configuration still needed
 
-Both fail closed if unconfigured. The challenge handler uses ONDC's published
-registry encryption public key for `ONDC_REGISTRY_ENVIRONMENT`; default
-`preproduction`, with `production` selected only for the corresponding approved
-subscription. It validates the requested subscriber ID. Request IDs and unique
-key IDs serve different purposes; do not substitute one for the other.
+### Supabase Auth
 
-These endpoints do not enable outgoing production transactions. Outbound
-Workbench fixtures remain locked in staging and contain mock payment data.
+The connected plugin does not expose hosted Auth settings. Dashboard sign-in is
+required; never send a management token through chat.
 
-## Sequence to production
+- Site URL: `https://www.zeroprofit.food`.
+- Exact allowed redirects: `https://www.zeroprofit.food/account` and
+  `https://zeroprofit-preproduction.zanynik.workers.dev/account`.
+- Keep email confirmation enabled; align minimum password length to 10.
+- Configure a verified custom SMTP sender before public signup. Supabase's
+  default email service is restricted to team addresses and is not production
+  mail delivery. Use the provider's exact DNS records, preserving existing SPF.
+- Verify signup, confirmation, login and logout with an owner test account.
 
-1. Integration re-enabled and subscription inspected. Next recover the original private-key backup, or coordinate rotation when the independent service can be updated.
-2. Reconcile the NP Agreement status and outstanding ONDC verification tasks.
-3. Configure/retest the independent service with the original pre-production
-   keys, trusted senders, correct request ID and the approved callback address.
-4. Finish email setup and DNS inventory, then migrate hosting without changing
-   the registered subscriber ID or `/buyer` path. Preserve old Sites logs.
-5. Complete ONDC's build, grievance/payout and observability acceptance steps.
-6. Request the approved production environment/subscription in the portal and
-   publish exactly the DNS verification record it supplies. Current ONDC guidance
-   says production subscription uses portal-managed approval and DNS verification;
-   do not blindly POST a legacy production /subscribe request.
-7. Validate the production registry entry, signature verification and callbacks.
-8. Replace all Workbench fixtures with real checkout/payment/refund/settlement
-   workflows and supervise an end-to-end pilot before opening customer ordering.
+### ONDC network observability
 
-Production registry membership and public shopping readiness are separate gates.
-The repository currently has account/support and protocol foundations; it does
-not yet implement a complete customer shopping/payment service.
+Obtain the current preprod N.O. token from the signed-in portal and store it
+as the Cloudflare Worker secret `N_O_Token`. It is currently absent. Verify
+accepted submissions at the preprod analytics endpoint after saving it. Current
+submission is best effort; there is no durable retry queue. A completed old
+portal checkbox does not prove the migrated Worker sends logs.
+
+## Next sequence
+
+1. Resolve the remaining Workbench report failures, rerun with the metadata fix,
+   and run the mandatory scenarios/versions confirmed by ONDC.
+2. Send the prepared support requests after specific recipient/disclosure
+   confirmation; reconcile the agreement and get the remaining acceptance and
+   walkthrough checklist in writing. Record actual ticket references.
+3. Complete Auth/email and network-observability configuration and verify both.
+4. Implement real catalog/search, cart, checkout, payments, cancellations,
+   refunds, grievance operations and settlement/reconciliation. The current
+   repository contains account/support and protocol foundations plus synthetic
+   test fixtures, not a complete customer shopping/payment service.
+5. Complete ONDC build, observability and grievance/payout acceptance. Arrange
+   the walkthrough when the real workflows and evidence are ready.
+6. Request production approval/subscription through the portal. Publish exactly
+   the DNS verification record and signed request ID supplied for that request;
+   do not invent them or reuse the UKID as a request ID.
+7. Verify production registry keys, callback signatures, production endpoint
+   configuration and a supervised end-to-end pilot before opening ordering.
+
+Production membership and customer shopping readiness are separate gates.
 
 Sources:
-- ONDC email: Business Profile Disabled, 20 October 2026.
-- ONDC email: Pending Submissions, 19 October 2026.
-- ONDC email: Subscription Module update, 1 October 2026.
+- Signed-in ONDC portal inspection, 2 November 2026.
+- Authenticated preprod registry lookup and live Workbench results.
 - https://github.com/ONDC-Official/developer-docs
-- https://github.com/ONDC-Official/reference-implementations/tree/main/utilities/on_subscibe-service/node
+- https://supabase.com/docs/guides/auth/redirect-urls
+- https://supabase.com/docs/guides/auth/auth-smtp

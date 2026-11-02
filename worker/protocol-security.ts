@@ -11,39 +11,52 @@ export function secretMatches(supplied: string | null, expected?: string): boole
 
 // Pin exact subscriber|key-id|ed25519 entries from a trusted registry lookup.
 // Never fetch a public key from a URL supplied by an incoming request.
+export function callbackSignatureStatus(
+  authorization: string | null,
+  body: string,
+  trustedKeysJson?: string,
+  now = Math.floor(Date.now() / 1000),
+): string {
+  try {
+    if (!authorization) return "missing_authorization";
+    if (!authorization.startsWith("Signature ")) return "unsupported_authorization";
+    if (!trustedKeysJson) return "missing_trusted_keys";
+    const fields: Record<string, string> = {};
+    const parts = authorization.slice(10).split(/,\s*/);
+    for (const part of parts) {
+      const match = /^(\w+)="([^"\r\n]+)"$/.exec(part);
+      if (!match || Object.hasOwn(fields, match[1])) return "malformed_authorization";
+      fields[match[1]] = match[2];
+    }
+    if (fields.algorithm !== "ed25519" || fields.headers !== "(created) (expires) digest") return "unsupported_signature_parameters";
+    if (!/^\d+$/.test(fields.created ?? "") || !/^\d+$/.test(fields.expires ?? "")) return "invalid_signature_timestamps";
+    const created = Number(fields.created), expires = Number(fields.expires);
+    if (created > now + 30) return "signature_created_in_future";
+    if (expires <= now || expires <= created) return "signature_expired";
+    if (expires - created > 600) return "signature_lifetime_exceeds_limit";
+    const keys = JSON.parse(trustedKeysJson) as Record<string, string>;
+    if (!Object.hasOwn(keys, fields.keyId) || typeof keys[fields.keyId] !== "string") return "untrusted_signer";
+    const publicKey = Buffer.from(keys[fields.keyId], "base64");
+    const signature = Buffer.from(fields.signature ?? "", "base64");
+    if (publicKey.length !== 32 || signature.length !== 64) return "invalid_key_or_signature_encoding";
+    const key = createPublicKey({
+      key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), publicKey]),
+      format: "der", type: "spki",
+    });
+    const digest = Buffer.from(blake2b(Buffer.from(body), undefined, 64)).toString("base64");
+    return verify(null, Buffer.from(`(created): ${fields.created}\n(expires): ${fields.expires}\ndigest: BLAKE-512=${digest}`), key, signature) ? "valid" : "signature_mismatch";
+  } catch {
+    return "invalid_signature_configuration";
+  }
+}
+
 export function verifyCallbackSignature(
   authorization: string | null,
   body: string,
   trustedKeysJson?: string,
   now = Math.floor(Date.now() / 1000),
 ): boolean {
-  try {
-    if (!authorization?.startsWith("Signature ") || !trustedKeysJson) return false;
-    const fields: Record<string, string> = {};
-    const parts = authorization.slice(10).split(/,\s*/);
-    for (const part of parts) {
-      const match = /^(\w+)="([^"\r\n]+)"$/.exec(part);
-      if (!match || Object.hasOwn(fields, match[1])) return false;
-      fields[match[1]] = match[2];
-    }
-    if (fields.algorithm !== "ed25519" || fields.headers !== "(created) (expires) digest") return false;
-    if (!/^\d+$/.test(fields.created ?? "") || !/^\d+$/.test(fields.expires ?? "")) return false;
-    const created = Number(fields.created), expires = Number(fields.expires);
-    if (created > now + 30 || expires <= now || expires <= created || expires - created > 600) return false;
-    const keys = JSON.parse(trustedKeysJson) as Record<string, string>;
-    if (!Object.hasOwn(keys, fields.keyId) || typeof keys[fields.keyId] !== "string") return false;
-    const publicKey = Buffer.from(keys[fields.keyId], "base64");
-    const signature = Buffer.from(fields.signature ?? "", "base64");
-    if (publicKey.length !== 32 || signature.length !== 64) return false;
-    const key = createPublicKey({
-      key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), publicKey]),
-      format: "der", type: "spki",
-    });
-    const digest = Buffer.from(blake2b(Buffer.from(body), undefined, 64)).toString("base64");
-    return verify(null, Buffer.from(`(created): ${fields.created}\n(expires): ${fields.expires}\ndigest: BLAKE-512=${digest}`), key, signature);
-  } catch {
-    return false;
-  }
+  return callbackSignatureStatus(authorization, body, trustedKeysJson, now) === "valid";
 }
 
 export async function boundedText(request: Request, maxBytes: number): Promise<string> {

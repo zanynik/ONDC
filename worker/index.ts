@@ -4,7 +4,7 @@ import handler from "vinext/server/app-router-entry";
 import { blake2b } from "blakejs";
 import { Buffer } from "node:buffer";
 import { createHmac, createPrivateKey, sign, timingSafeEqual } from "node:crypto";
-import { boundedText, secretMatches, verifyCallbackSignature } from "./protocol-security";
+import { boundedText, secretMatches, callbackSignatureStatus } from "./protocol-security";
 import { protocolStore, type StoreEnv } from "./protocol-store";
 import { signSubscriptionRequest, decryptRegistryChallenge, registryEncryptionKeys, publicKeysFromPrivate } from "./registration";
 
@@ -104,6 +104,11 @@ function protocolItems(items: Array<Record<string, unknown>> | undefined, fulfil
   const source = items?.length ? items : [{ id: "I1", quantity: { count: 1 }, fulfillment_id: fulfillmentId }];
   return source.map((item) => ({
     id: item.id,
+    // These scenario fixtures select location L1. Preserve item metadata from
+    // callbacks rather than dropping it between init and confirm.
+    location_id: item.location_id ?? "L1",
+    ...(typeof item.parent_item_id === "string" ? { parent_item_id: item.parent_item_id } : {}),
+    ...(Array.isArray(item.tags) ? { tags: item.tags } : {}),
     fulfillment_id: item.fulfillment_id ?? fulfillmentId,
     quantity: item.quantity ?? { count: 1 },
   }));
@@ -510,7 +515,7 @@ const worker = {
           domain: "ONDC:RET10", action: "select", timestamp: new Date().toISOString(),
           transaction_id: transactionId, message_id: crypto.randomUUID(),
           bap_id: env.ONDC_SUBSCRIBER_ID, bap_uri: env.ONDC_SUBSCRIBER_URL,
-          ttl: "PT30S", bpp_id: "sample-bpp-id", bpp_uri: workbenchBase,
+          ttl: "PT30S", bpp_id: "workbench.ondc.tech", bpp_uri: workbenchBase,
           country: "IND", city: "std:011", core_version: "1.2.5",
         },
         message: {
@@ -701,7 +706,7 @@ const worker = {
         context: {
           domain: "ONDC:RET10", action, timestamp: now, transaction_id: transactionId, message_id: crypto.randomUUID(),
           bap_id: env.ONDC_SUBSCRIBER_ID, bap_uri: env.ONDC_SUBSCRIBER_URL, ttl: "PT30S",
-          bpp_id: "sample-bpp-id", bpp_uri: workbenchBase, country: "IND", city: "std:011", core_version: "1.2.5",
+          bpp_id: "workbench.ondc.tech", bpp_uri: workbenchBase, country: "IND", city: "std:011", core_version: "1.2.5",
         },
         message: { order },
       };
@@ -735,7 +740,7 @@ const worker = {
         context: {
           domain: "ONDC:RET10", action: "track", timestamp: new Date().toISOString(), transaction_id: transactionId,
           message_id: crypto.randomUUID(), bap_id: env.ONDC_SUBSCRIBER_ID, bap_uri: env.ONDC_SUBSCRIBER_URL,
-          ttl: "PT30S", bpp_id: "sample-bpp-id", bpp_uri: workbenchBase,
+          ttl: "PT30S", bpp_id: "workbench.ondc.tech", bpp_uri: workbenchBase,
           country: "IND", city: "std:011", core_version: "1.2.5",
         },
         message: { order_id: "501218" },
@@ -766,7 +771,7 @@ const worker = {
         context: {
           domain: "ONDC:RET10", action: "cancel", timestamp: new Date().toISOString(), transaction_id: transactionId,
           message_id: crypto.randomUUID(), bap_id: env.ONDC_SUBSCRIBER_ID, bap_uri: env.ONDC_SUBSCRIBER_URL,
-          ttl: "PT30S", bpp_id: "sample-bpp-id", bpp_uri: workbenchBase,
+          ttl: "PT30S", bpp_id: "workbench.ondc.tech", bpp_uri: workbenchBase,
           country: "IND", city: "std:011", core_version: "1.2.5",
         },
         message: {
@@ -851,7 +856,7 @@ const worker = {
         context: {
           domain: "ONDC:RET10", action: "catalog_rejection", timestamp: new Date().toISOString(), transaction_id: transactionId,
           message_id: crypto.randomUUID(), bap_id: env.ONDC_SUBSCRIBER_ID, bap_uri: env.ONDC_SUBSCRIBER_URL,
-          ttl: "PT30S", bpp_id: "sample-bpp-id", bpp_uri: workbenchBase,
+          ttl: "PT30S", bpp_id: "workbench.ondc.tech", bpp_uri: workbenchBase,
           country: "IND", city: "std:011", core_version: "1.2.5",
         },
         message: { errors: [
@@ -987,7 +992,7 @@ const worker = {
         context: {
           domain: "ONDC:RET10", action: "update", timestamp: now, transaction_id: transactionId, message_id: crypto.randomUUID(),
           bap_id: env.ONDC_SUBSCRIBER_ID, bap_uri: env.ONDC_SUBSCRIBER_URL, ttl: "PT30S",
-          bpp_id: "sample-bpp-id", bpp_uri: workbenchBase, country: "IND", city: "std:011", core_version: "1.2.5",
+          bpp_id: "workbench.ondc.tech", bpp_uri: workbenchBase, country: "IND", city: "std:011", core_version: "1.2.5",
         },
         message,
       };
@@ -1022,9 +1027,14 @@ const worker = {
           typeof context.message_id !== "string" || !context.message_id.trim()) {
         return json({ error: "invalid_callback_context" }, 400);
       }
-      if (env.ONDC_CALLBACK_VERIFICATION === "required" &&
-          !verifyCallbackSignature(request.headers.get("authorization"), rawPayload, env.ONDC_TRUSTED_SIGNING_KEYS)) {
-        return json({ error: "invalid_callback_signature" }, 401);
+      if (env.ONDC_CALLBACK_VERIFICATION === "required") {
+        const signatureStatus = callbackSignatureStatus(request.headers.get("authorization"), rawPayload, env.ONDC_TRUSTED_SIGNING_KEYS);
+        if (signatureStatus !== "valid") {
+          // Pre-production diagnostics reveal only a fixed reason, never keys,
+          // Authorization headers, signatures or an unverified callback body.
+          const signer = /(?:^Signature |,\s*)keyId="([A-Za-z0-9._:|/-]{1,256})"/.exec(request.headers.get("authorization") ?? "")?.[1];
+          return json({ error: "invalid_callback_signature", ...(env.ONDC_DEPLOYMENT_MODE === "preproduction" ? { reason: signatureStatus, ...(signer ? { signer } : {}) } : {}) }, 401);
+        }
       }
       const action = context.action;
       try {
