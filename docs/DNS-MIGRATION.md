@@ -6,16 +6,36 @@ Assigned nameservers: `iris.ns.cloudflare.com`, `johnny.ns.cloudflare.com`.
 Previous registrar nameservers: `ns23.domaincontrol.com`, `ns24.domaincontrol.com`.
 
 The owner exported the GoDaddy zone and changed the registrar nameservers.
-Cloudflare DNS-over-HTTPS now returns the assigned Cloudflare nameservers;
-Google still returned cached GoDaddy nameservers during the same check.
-The last Cloudflare zone API status remains `pending`; activation check was
-requested successfully. Do not report active-zone or website cutover completion
-until verified. No repeat registrar change is needed on the evidence available.
+Cloudflare's zone API now reports **active**. Public DNS returns the assigned
+Cloudflare nameservers.
+
+## Public website cutover complete
+
+The following enabled Worker Custom Domains now route to
+`zeroprofit-preproduction` (environment `production`):
+- `www.zeroprofit.food`: domain ID `1ddd684a645a6500de6bf95a58fbec36e428c998`,
+  certificate ID `cea08fcd-3787-4a86-b521-698311456198`.
+- `zeroprofit.food`: domain ID `1837fa8d827d3a4e1619c44ab5467452807c48a6`,
+  certificate ID `b7397b1c-62d7-46cf-b05f-941fbd142085`.
+
+The former www CNAME and two apex GoDaddy A records were replaced by Worker
+Custom Domain records. The ONDC CNAME, all TXT records and DomainConnect CNAME
+were retained. Cloudflare manages the public-hostname certificates.
+
+Verified live over HTTPS: all six website pages return 200; the apex responds
+308 to www with path/query preserved. The www health endpoint identifies the
+independent staging backend with Supabase persistence. Browser verified the
+account page and its create-account form interaction. Email confirmation and
+full sign-in remain unverified until hosted Auth settings are configured.
+
+The overall migration is **partial**: `ondc.zeroprofit.food` still uses ChatGPT
+Sites because the independent service lacks the original private keys/tokens.
+Do not advertise the whole application as independent yet. ONDC production
+approval is a separate project gate.
 
 ## Preserved inventory
 
-Ten records were created in Cloudflare and read back with no missing records.
-All A/CNAME records remain DNS-only (not proxied) for preservation:
+Ten original records were created in Cloudflare and read back with no missing records before cutover. The original inventory for rollback is:
 
 - Apex A: `76.223.105.230` and `13.248.243.5`. GoDaddy's export contains the
   non-IP placeholder `WebsiteBuilder Site`; these actual IPs were resolved
@@ -32,22 +52,25 @@ All A/CNAME records remain DNS-only (not proxied) for preservation:
   no DS record. No DNSSEC setting was modified. Enable signing after stable
   migration using the new provider's actual DS values and registrar flow.
 
-## Next actions
+## Remaining actions
 
-1. Read zone status until active before attaching Worker Custom Domains.
-2. Move `www.zeroprofit.food` to `zeroprofit-preproduction` using the Workers
-   Domains API. An existing CNAME conflicts: capture its exact record, remove
-   only that CNAME immediately before attaching, and restore it if attachment
-   fails. Preserve the verification TXT records for rollback.
-3. Attach the apex to the same Worker to activate its existing apex-to-www
-   redirect. Verify certificates, redirect, all pages, images, JS/CSS and account.
-4. Keep `ondc.zeroprofit.food` on its existing backend until private keys,
-   tokens, trusted callback keys and callback parity are configured/tested.
-   Do not strand the existing subscribed ONDC endpoint during public-page migration.
-5. Finish Supabase hosted Auth redirect/SMTP settings (not exposed by the
-   current plugin). Preserve original Sites data until a complete supported
-   export and rollback-retention decision.
+1. Configure Supabase hosted Auth redirects for the live account URL and verified
+   SMTP. The current Supabase plugin does not expose these settings.
+2. Recover original ONDC private keys/tokens or coordinate a replacement key
+   pair with the registered subscription; configure trusted callback signing
+   keys and test before moving the ONDC hostname.
+3. Obtain a complete supported export of old Sites protocol data. Bounded plugin
+   row responses truncate some payloads and are not a complete export.
+4. After verified ONDC cutover and the chosen rollback period, retire the old
+   Sites hosting. Do not delete it while it is serving the subscribed endpoint.
 
-The deployed independent Worker is `4909754ec22f4809b7831fb1df60f297`, verified
-on workers.dev. Source/build and 22 tests passed. Domain DNS management and
-website hosting are separate steps; full independence is not yet complete.
+The independent deployment is `4909754ec22f4809b7831fb1df60f297`.
+The source build and 22 tests passed before deployment. Custom Domains are now
+tracked in wrangler.jsonc for future deployments.
+
+## Rollback
+
+Detach the two Worker Custom Domains, then recreate the original www CNAME and
+apex A records above with DNS-only routing and TTL 3600. Retain original Sites
+hosting and verification TXT records. Moving the registrar nameservers back to
+GoDaddy is not required for this hosting rollback.
