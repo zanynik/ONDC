@@ -21,7 +21,8 @@
     "ONDC_SUBSCRIBER_ID": "ondc.zeroprofit.food",
     "ONDC_SUBSCRIBER_URL": "https://ondc.zeroprofit.food/buyer",
     "SUPABASE_URL": "https://ynmevkntztzfutjnbfnf.supabase.co",
-    "ZP_PROTOCOL_STORAGE": "supabase"
+    "ZP_PROTOCOL_STORAGE": "supabase",
+    "ONDC_UNIQUE_KEY_ID": "a760e7ab-df2e-47eb-8287-dce8deb0ea3e"
   },
   "routes": [
     {
@@ -34,4 +35,3 @@
     }
   ]
 }
-

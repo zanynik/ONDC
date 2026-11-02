@@ -19,6 +19,21 @@ export function signSubscriptionRequest(requestId: string, encodedPrivateKey: st
   const privateKey=createPrivateKey({key:Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),seed]),format:'der',type:'pkcs8'});
   return sign(null,Buffer.from(requestId,'utf8'),privateKey).toString('base64');
 }
+
+// Public diagnostics for operators. Private bytes never leave the Worker.
+export function publicKeysFromPrivate(signingKey: string, encryptionKey: string) {
+  const signingBytes = decode(signingKey);
+  const seed = signingBytes.length === 64 ? signingBytes.subarray(0, 32) : signingBytes;
+  if (seed.length !== 32) throw new Error('invalid_signing_key');
+  const signingPrivate = createPrivateKey({key: Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'), seed]), format:'der', type:'pkcs8'});
+  const encryptionBytes = decode(encryptionKey);
+  const encryptionPrivate = createPrivateKey({key: encryptionBytes.length === 32 ? Buffer.concat([Buffer.from('302e020100300506032b656e04220420','hex'), encryptionBytes]) : encryptionBytes, format:'der', type:'pkcs8'});
+  if (encryptionPrivate.asymmetricKeyType !== 'x25519') throw new Error('invalid_encryption_key');
+  return {
+    signing_public_key: createPublicKey(signingPrivate).export({format:'der',type:'spki'}).subarray(-32).toString('base64'),
+    encryption_public_key: createPublicKey(encryptionPrivate).export({format:'der',type:'spki'}).toString('base64'),
+  };
+}
 export function decryptRegistryChallenge(challenge: string, encodedPrivateKey: string, registryPublicKey: string): string {
   const bytes=decode(encodedPrivateKey);
   const keyBytes=bytes.length===32?Buffer.concat([Buffer.from('302e020100300506032b656e04220420','hex'),bytes]):bytes;

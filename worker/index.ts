@@ -6,7 +6,7 @@ import { Buffer } from "node:buffer";
 import { createHmac, createPrivateKey, sign, timingSafeEqual } from "node:crypto";
 import { boundedText, secretMatches, verifyCallbackSignature } from "./protocol-security";
 import { protocolStore, type StoreEnv } from "./protocol-store";
-import { signSubscriptionRequest, decryptRegistryChallenge, registryEncryptionKeys } from "./registration";
+import { signSubscriptionRequest, decryptRegistryChallenge, registryEncryptionKeys, publicKeysFromPrivate } from "./registration";
 
 interface Env extends StoreEnv {
   ASSETS: Fetcher;
@@ -293,6 +293,33 @@ const worker = {
     }
 
     // Registry onboarding routes do not enable customer or Workbench transactions.
+    if (url.pathname === "/buyer/key-health") {
+      if (!isExistingWorkbenchAuthorized(request, env)) return json({ error: "not_found" }, 404);
+      if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+      try {
+        const keys = publicKeysFromPrivate(env.ONDC_SIGNING_PRIVATE_KEY ?? "", env.ONDC_ENCRYPTION_PRIVATE_KEY ?? "");
+        let storageConnected = false;
+        try { await protocolStore(env).listLogs(null, 1); storageConnected = true; } catch { /* no payloads or errors exposed */ }
+        return json({valid: true, unique_key_id: env.ONDC_UNIQUE_KEY_ID ?? null, ...keys, storage_connected: storageConnected});
+      } catch { return json({valid: false, error: "key_configuration_invalid"}, 503); }
+    }
+    if (url.pathname === "/buyer/registry/lookup") {
+      if (!isExistingWorkbenchAuthorized(request, env)) return json({ error: "not_found" }, 404);
+      if (request.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      if (!(request.headers.get("content-type") ?? "").includes("application/json")) return json({error:"json_required"},415);
+      try {
+        const input = JSON.parse(await boundedText(request, 4096)) as Record<string, unknown>;
+        if (!input || typeof input !== 'object' || Array.isArray(input) ||
+          (input.subscriber_id !== undefined && (typeof input.subscriber_id !== 'string' || !/^[a-z0-9.-]{1,253}$/i.test(input.subscriber_id)))) return json({error:"invalid_lookup"},400);
+        const environment = env.ONDC_REGISTRY_ENVIRONMENT ?? "preproduction";
+        if (environment !== "preproduction") return json({error:"preproduction_only"},503);
+        const body = JSON.stringify({country:"IND",domain:"ONDC:RET10",subscriber_id:input.subscriber_id ?? env.ONDC_SUBSCRIBER_ID});
+        const authorization = ondcAuthorization(body, env);
+        const response = await fetch("https://preprod.registry.ondc.org/v2.0/lookup", {method:"POST",headers:{"content-type":"application/json",authorization},body,redirect:"error",signal:AbortSignal.timeout(15000)});
+        const payload = await boundedText(new Request("https://registry-response.invalid",{method:"POST",body:response.body,duplex:"half"} as RequestInit),524288);
+        return json({upstream_status:response.status, records:JSON.parse(payload)},response.ok ? 200 : 502);
+      } catch { return json({error:"registry_lookup_failed"},502); }
+    }
     if (url.pathname === "/ondc-site-verification.html") {
       if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
       if (!env.ONDC_SUBSCRIPTION_REQUEST_ID || !env.ONDC_SIGNING_PRIVATE_KEY) return json({ error: "subscription_not_configured" }, 503);
