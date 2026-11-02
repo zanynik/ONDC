@@ -1,5 +1,7 @@
 # ONDC production next steps — checked 2 November 2026
 
+> Hosting migration update: all three live hostnames use Cloudflare; current storage uses Supabase. The key-recovery and DNS steps below describe the earlier sequence. Replacement keys and trusted Workbench/gateway keys have now been verified. Production approval, active-scenario acceptance, email setup and observability completion remain pending.
+
 ## Current portal evidence
 
 Signed-in portal inspected on 2 November 2026. Organization 16047,
@@ -9,7 +11,7 @@ been re-enabled successfully; the visible status is **Integration in Progress**.
 The existing PreProd subscription is **Subscribed**:
 - Subscriber ID: `ondc.zeroprofit.food`.
 - Subscriber URL: `https://ondc.zeroprofit.food/buyer`.
-- Existing UKID: `5f6cf834-19d6-42de-8c03-d13208a4b42d`.
+- Existing UKID: `a760e7ab-df2e-47eb-8287-dce8deb0ea3e`.
 - Keys expire 27 August 2027; subscription last updated 27 August 2026.
 - The View panel exposes public keys only. The Edit form offers an unchecked
   **Generate new key pair** option, explicitly replacing signing/encryption keys.
@@ -31,9 +33,7 @@ Current portal task status:
 
 Agreement support issue ONWGR-011708 was previously closed without resolving
 the pending status. Reconcile the already signed agreement with ONDC.
-The registry endpoints passed GitHub CI at e9aa4ceb78d557386f312c4c30e19a80ccea42a0,
-but their deployment is still outstanding. Cloudflare's last verified deployed
-script predates that commit. Do not describe source completion as deployment.
+The registry endpoints and protected operator diagnostics are now deployed on Cloudflare. Replacement keys match the subscribed registry record; the ONDC hostname now routes to the independent Worker. See [ONDC-KEY-ROTATION.md](ONDC-KEY-ROTATION.md) for the latest verified keys, deployment and remaining active-Workbench test requirement.
 
 ## Obtain the four configuration items
 
@@ -45,7 +45,7 @@ script predates that commit. Do not describe source completion as deployment.
 | DNS | GoDaddy DNS/registrar, with the existing records preserved | Inventory/export the complete zone before any nameserver change. Include mail, verification and ONDC TXT records. Attach and verify the independent host only after the inventory is complete. |
 
 The recorded existing unique key ID is
-`5f6cf834-19d6-42de-8c03-d13208a4b42d`. Compare it with the actual portal
+`a760e7ab-df2e-47eb-8287-dce8deb0ea3e`. Compare it with the actual portal
 subscription; it is not a replacement for inspecting the current record.
 The Sites API masks private secret values. If the original private keys cannot
 be recovered from a legitimate backup/download, coordinate a new key pair and
