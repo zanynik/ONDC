@@ -52,6 +52,10 @@ test('registry lookup is operator-only, signs the exact fixed-destination reques
  const request=(body,authorized=true)=>new Request('https://example.test/buyer/registry/lookup',{method:'POST',headers:{'content-type':'application/json',...(authorized?{'x-ondc-admin-token':'operator-token'}:{})},body:JSON.stringify(body)});
  assert.equal((await worker.fetch(request({},false),env,{})).status,404);
  assert.equal((await worker.fetch(request({subscriber_id:'https://attacker.example'}),env,{})).status,400);
+ const prepared=await(await worker.fetch(request({dry_run:true}),env,{})).json();
+ assert.equal(prepared.url,'https://preprod.registry.ondc.org/v2.0/lookup');
+ assert.deepEqual(JSON.parse(prepared.body),{country:'IND',domain:'ONDC:RET10',subscriber_id:'buyer.example'});
+ assert.ok(!JSON.stringify(prepared).includes(seed));
  let calls=0;
  t.mock.method(globalThis,'fetch',async(url,options)=>{
   calls++;assert.equal(url,'https://preprod.registry.ondc.org/v2.0/lookup');assert.equal(options.redirect,'error');

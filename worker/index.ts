@@ -316,6 +316,10 @@ const worker = {
         if (environment !== "preproduction") return json({error:"preproduction_only"},503);
         const body = JSON.stringify({country:"IND",domain:"ONDC:RET10",subscriber_id:input.subscriber_id ?? env.ONDC_SUBSCRIBER_ID});
         const authorization = ondcAuthorization(body, env);
+        // Operators can perform this read-only lookup from their own network
+        // when the registry cannot be reached from the Worker. No private key
+        // is exported, and callers cannot change the destination or operation.
+        if (input.dry_run === true) return json({url:"https://preprod.registry.ondc.org/v2.0/lookup",body,authorization});
         const response = await fetch("https://preprod.registry.ondc.org/v2.0/lookup", {method:"POST",headers:{"content-type":"application/json",authorization},body,redirect:"error",signal:AbortSignal.timeout(30000)});
         upstreamStatus = response.status;
         const payload = await boundedText(new Request("https://registry-response.invalid",{method:"POST",body:response.body,duplex:"half"} as RequestInit),524288);
