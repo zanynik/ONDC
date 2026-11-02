@@ -16,13 +16,14 @@
     }
   },
   "vars": {
-    "ONDC_DEPLOYMENT_MODE": "staging",
+    "ONDC_DEPLOYMENT_MODE": "preproduction",
     "ONDC_CALLBACK_VERIFICATION": "required",
     "ONDC_SUBSCRIBER_ID": "ondc.zeroprofit.food",
     "ONDC_SUBSCRIBER_URL": "https://ondc.zeroprofit.food/buyer",
     "SUPABASE_URL": "https://ynmevkntztzfutjnbfnf.supabase.co",
     "ZP_PROTOCOL_STORAGE": "supabase",
-    "ONDC_UNIQUE_KEY_ID": "a760e7ab-df2e-47eb-8287-dce8deb0ea3e"
+    "ONDC_UNIQUE_KEY_ID": "a760e7ab-df2e-47eb-8287-dce8deb0ea3e",
+    "ONDC_TRUSTED_SIGNING_KEYS": "{\"workbench.ondc.tech|c11d8b66-a8fb-4962-b1d8-66a66a67079d|ed25519\":\"POT0oYdwKKGx1ZWTeSKfBHtoXeyQar4dO8w3wuFrXJU=\",\"preprod.gateway.ondc.org|0739b57d-1dea-419f-ab8e-f5b0f878ca5c|ed25519\":\"wpENEvRm4NvQtdf7FNTtGZtcZJfPxpsJEOjuabCXXgw=\"}"
   },
   "routes": [
     {
@@ -31,6 +32,10 @@
     },
     {
       "pattern": "zeroprofit.food",
+      "custom_domain": true
+    },
+    {
+      "pattern": "ondc.zeroprofit.food",
       "custom_domain": true
     }
   ]
