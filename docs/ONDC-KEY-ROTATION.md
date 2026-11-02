@@ -1,41 +1,73 @@
-# ONDC key replacement checkpoint
+# ONDC key replacement and hosting cutover — 2 November 2026
 
-The owner generated replacement keys through the ONDC portal. A fresh signed-in
-subscription View panel shows the existing PreProd subscription still Subscribed
-at subscriber ID `ondc.zeroprofit.food`, URL `https://ondc.zeroprofit.food/buyer`.
-The new public identifiers are:
+## Verified replacement keys
 
-- Unique key ID: `bec6f9f9-9e08-4845-acba-3c85f85907e4`.
-- Ed25519 signing public key: `+s8rQaTZ70ej+a7aK6Hf2ftNtxQNHparvODtC/I6fWM=`.
-- X25519 encryption public key (SPKI DER, Base64):
-  `MCowBQYDK2VuAyEAoWgjqpfFFFz5W1S5JJdm+x5i8j6n/I6Fc8MKbhPUYXc=`.
-- The portal displays updated 03 Nov 2026 and expiry 03 Nov 2027. These are the
-  portal's displayed dates; the session client date is 2 November 2026.
+The owner stored both replacement private keys directly as Cloudflare secrets.
+The assistant did not retrieve their values. A protected Worker diagnostic
+derived the public keys inside the runtime and returned only these public values:
 
-The old unique key ID in earlier checklists is superseded. No private keys are
-included here or in source control. The owner reports that the private-key file
-was downloaded in the cloud browser. It has not appeared in the shared scratch
-folder. Agent access to chrome://downloads is blocked by browser policy; do not
-use alternate browser surfaces or low-level commands to work around that block.
-The owner must retrieve the file through the supported user download interface
-and provide it for secure import, or enter the private keys directly into the
-Cloudflare Worker's secret settings.
+- UKID: `a760e7ab-df2e-47eb-8287-dce8deb0ea3e`.
+- Signing public key: `dZPaApbjiE+kxp0II2J4WWtlAlLo8tt0vqdDcu6c9XU=`.
+- X25519 encryption public key:
+  `MCowBQYDK2VuAyEAgIvbE5hRFJSPJznx3hMGYpn5YPSUWhpcSSbLzOtk7FA=`.
 
-## Next steps
+A signed v2.0 lookup returned HTTP 200, one matching SUBSCRIBED record, exactly
+these public keys, the registered URL `https://ondc.zeroprofit.food/buyer`,
+valid from 2026-11-02T19:35:00.387Z until 2027-11-02T19:35:00.387Z.
+All earlier UKIDs in older checklists are superseded.
 
-1. Obtain the replacement private-key package through an authorized supported
-   file flow. Never print key values or commit the package.
-2. Derive public keys locally and compare against both public values above.
-3. Install signing/encryption keys in `zeroprofit-preproduction` secrets and
-   update its unique key ID. Preserve the protocol-store token and static assets.
-4. Configure remaining runner/admin/observability tokens and trusted preprod
-   callback sender public keys. Test signing and registry lookup; do not loosen
-   callback verification or unlock fixtures simply to obtain a green health page.
-5. Validate the independent handler, then migrate the ONDC custom domain with
-   rollback records retained. Confirm callbacks and persistence end to end.
+The direct Worker-to-registry request fails with a transport TypeError before
+an upstream HTTP status. An operator-only prepared-request path signs the fixed
+preprod read-only lookup inside the Worker; the verification client sends it
+to ONDC. That path succeeded without exporting private keys. Do not claim
+automatic registry refresh or direct Worker registry connectivity is working.
 
-The public www website and apex redirect already use Cloudflare. The ONDC
-hostname still routes to ChatGPT Sites. Its original private keys may no longer
-match the registry after this owner-performed replacement, so pause preprod
-transaction tests until the new private keys have been installed and verified.
-Full ONDC hosting independence is not complete yet.
+## Trusted preprod callback senders
+
+Authenticated registry lookups verified SUBSCRIBED RET10 records and validity:
+- Workbench `workbench.ondc.tech|c11d8b66-a8fb-4962-b1d8-66a66a67079d|ed25519`,
+  public key `POT0oYdwKKGx1ZWTeSKfBHtoXeyQar4dO8w3wuFrXJU=`,
+  validity 2026-07-21 through 2036-07-21, BAP/BPP records.
+- Gateway `preprod.gateway.ondc.org|0739b57d-1dea-419f-ab8e-f5b0f878ca5c|ed25519`,
+  public key `wpENEvRm4NvQtdf7FNTtGZtcZJfPxpsJEOjuabCXXgw=`,
+  validity 2026-07-02 through 2031-05-30, BG record.
+
+These two exact key IDs are pinned in configuration. Unknown senders remain
+rejected; production and other seller keys require their own verified lookup.
+Refresh the pins if the registry rotates them. No callback verification was
+disabled to achieve the migration.
+
+## Independent hosting
+
+The ONDC hostname now has an enabled Cloudflare Worker Custom Domain:
+- Domain ID `1f69e53d9c61c35033f9b400ca9ac0eacfbd06c3`.
+- Certificate ID `a0ec26a2-8108-4946-84ab-cad824437a10`.
+- Service `zeroprofit-preproduction`; custom-domain environment name
+  `production` is Cloudflare's deployment label, not ONDC production approval.
+- Worker deployment `405ea578a8b649279f62c64441693f93`.
+- Application mode `preproduction`, required callback signatures, Supabase store,
+  `production_ready:false`.
+- Hosted protected diagnostic confirmed real Supabase connectivity.
+- Live hostname health now reports the independent deployment fields. Initial
+  cached requests still reached the old Site before DNS propagation completed.
+- Public www and apex already use the same independent Worker.
+
+A preprod Workbench select request reached ONIX and returned error 412:
+“No active expectation found” for its fresh synthetic transaction. This is
+not an end-to-end flow pass. Start an active Workbench scenario and repeat the
+select/init/confirm/callback checks before claiming flow acceptance.
+
+## Remaining work
+
+- Complete the active Workbench end-to-end acceptance run and callback persistence
+  verification for the real Workbench signer.
+- Transfer/configure the network-observability token and verify submissions.
+- Complete Supabase hosted Auth redirect/SMTP configuration and real email tests.
+- Obtain a complete export of historical Sites protocol data. Keep the old Site
+  and D1 database for history/rollback; bounded row responses truncate payloads
+  and are not a usable full export.
+- ONDC production agreement/walkthrough/build approval and actual customer
+  shopping/payment/refund/settlement implementation remain separate gates.
+
+The new admin and runner secrets are held in Cloudflare; never put their values
+or private key downloads in source control or operational logs.
